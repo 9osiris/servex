@@ -66,7 +66,7 @@ server {
 
 global keys: `port`, `workers`, `log`, `log_max_bytes` (rotate the access log past this size, 0 = off), `log_archives` (numbered archives kept), `include` (glob of extra config files), `set` (variables expanded as `${name}`).
 
-per server: `host` (exact or `*.example.com` wildcard, first match wins), `docroot`, `dir_listing`, `log` (per-host access log), `rate`/`burst` (token bucket per client ip).
+per server: `host` (exact or `*.example.com` wildcard, first match wins), `docroot`, `dir_listing`, `log` (per-host access log), `rate`/`burst` (token bucket per client ip), `gzip` (on/off, compress text-ish static files when the client sends `Accept-Encoding: gzip`, off by default), `gzip_min_size` (only compress files at least this big, accepts `1024`/`2kb`/`1m`, default 1024).
 
 per location: `proxy_pass` (reverse proxy to `host:port` with pooled keep-alive upstream connections), `cgi` (run executable files as cgi/1.1 scripts), `websocket` (allow rfc 6455 upgrades), `auth_realm`/`auth_file` (basic auth, plain or `{SHA}` htpasswd entries), `rewrite_pattern`/`rewrite_replacement` (regex internal rewrite), `redirect_to`/`redirect_code` (301/302 keeping the query string), `add_headers` (custom response headers), `rate`/`burst` (per-location token bucket).
 
@@ -74,7 +74,7 @@ per location: `proxy_pass` (reverse proxy to `host:port` with pooled keep-alive 
 
 http core: keep-alive, pipelining, chunked request bodies (with extensions and trailers), chunked responses, `Expect: 100-continue`, HEAD, OPTIONS (including `OPTIONS *`), absolute-form targets. conflicting or duplicate content-lengths are rejected, and content-length plus transfer-encoding together is rejected.
 
-static files: mime types by extension, etags, `If-Modified-Since` / `If-None-Match` / `If-Match` / `If-Unmodified-Since`, single and multipart byte ranges with `If-Range`, directory index files and listings, `..` escapes blocked.
+static files: mime types by extension, etags, `If-Modified-Since` / `If-None-Match` / `If-Match` / `If-Unmodified-Since`, single and multipart byte ranges with `If-Range`, directory index files and listings, `..` escapes blocked, gzip content encoding for text-ish types when the client accepts it (`gzip = on`, `gzip_min_size` threshold, off by default).
 
 middleware: basic auth, regex rewrites, redirects, custom headers per location.
 
@@ -106,11 +106,10 @@ anything else falls through to the static file server.
 make test
 ```
 
-every suite builds the binary itself, starts it on a throwaway port with a fixture docroot, and talks to it over real localhost sockets. stdlib only, no test frameworks. currently 11 suites covering the original 18 checks plus http core, conditional/range, admin/stats, virtual hosts, middleware, rate limiting, proxy, cgi, websocket, and log rotation.
+every suite builds the binary itself, starts it on a throwaway port with a fixture docroot, and talks to it over real localhost sockets. stdlib only, no test frameworks. currently 12 suites covering the original 18 checks plus http core, conditional/range, admin/stats, virtual hosts, middleware, rate limiting, proxy, cgi, websocket, log rotation, and gzip.
 
 ## what is NOT implemented
 
 - no tls. plain http only, use a reverse proxy if you need https.
-- no gzip.
 - no request timeouts beyond the cgi kill timer and websocket idle timeout.
 - the config file has no validation beyond "bad value, keep the default".
