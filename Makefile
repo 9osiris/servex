@@ -17,6 +17,7 @@ test: servex
 	python3 tests/test_cgi.py
 	python3 tests/test_websocket.py
 	python3 tests/test_logrotate.py
+	python3 tests/test_gzip.py
 
 clean:
 	rm -f servex
