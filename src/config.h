@@ -25,6 +25,8 @@ struct ServerBlock {
     std::vector<std::string> hosts; // names, "*.example.com" wildcards
     std::string docroot = "./www";
     bool dir_listing = true;
+    bool gzip = false;        // gzip content encoding, off by default
+    long gzip_min_size = 1024; // only compress files at least this big
     std::string log_path; // "" falls back to the global log
     double rate = 0;
     long burst = 0;
