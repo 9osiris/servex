@@ -1,5 +1,5 @@
 // static file serving with mime detection, conditional requests,
-// and byte ranges
+// byte ranges, and optional gzip content encoding
 #include "files.h"
 #include "etag.h"
 #include "range.h"
@@ -182,8 +182,33 @@ static HttpResponse multipart_response(const std::string& full, long size,
     return res;
 }
 
+// text and structured-text types worth compressing; already-compressed
+// formats (images, video, archives) are skipped
+static bool gzip_worthy_mime(const std::string& ctype) {
+    if (ctype.compare(0, 5, "text/") == 0) return true;
+    if (ctype == "application/javascript" ||
+        ctype == "application/json" ||
+        ctype == "application/xml")
+        return true;
+    return ctype.size() > 4 &&
+           ctype.compare(ctype.size() - 4, 4, "+xml") == 0;
+}
+
+// true when the client lists gzip (or x-gzip) in accept-encoding
+static bool accepts_gzip(const HttpRequest& req) {
+    auto it = req.headers.find("accept-encoding");
+    if (it == req.headers.end()) return false;
+    for (std::string tok : split_tokens(it->second)) {
+        size_t semi = tok.find(';'); // strip q= weights
+        if (semi != std::string::npos) tok = trim(tok.substr(0, semi));
+        if (tok == "gzip" || tok == "x-gzip") return true;
+    }
+    return false;
+}
+
 HttpResponse serve_file_request(const std::string& docroot,
-                                const HttpRequest& req, bool dir_listing) {
+                                const HttpRequest& req, bool dir_listing,
+                                const GzipOpts& gz) {
     if (req.method != "GET" && req.method != "HEAD")
         return method_not_allowed();
     std::string full = join_safe(docroot, req.path);
@@ -275,6 +300,21 @@ HttpResponse serve_file_request(const std::string& docroot,
     r.headers["ETag"] = etag;
     r.headers["Last-Modified"] = lastmod;
     r.headers["Accept-Ranges"] = "bytes";
+    if (gz.enabled && gzip_worthy_mime(ctype)) {
+        r.headers["Vary"] = "Accept-Encoding";
+        if ((req.method == "GET" || req.method == "HEAD") &&
+            st.st_size >= gz.min_size && accepts_gzip(req)) {
+            std::string raw = read_slice(full, 0, st.st_size);
+            std::string enc = gzip_compress(raw);
+            if (!enc.empty() && enc.size() < raw.size()) {
+                // head drops the body in send_response, but the
+                // headers still describe what a get would return
+                r.headers["Content-Encoding"] = "gzip";
+                r.body = enc;
+                return r;
+            }
+        }
+    }
     r.is_file = true;
     r.file_path = full;
     r.file_size = st.st_size;
