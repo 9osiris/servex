@@ -6,10 +6,34 @@
 #include <glob.h>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
 static bool parse_bool(const std::string& s) {
     std::string v = lower(s);
     return v == "on" || v == "true" || v == "yes" || v == "1";
+}
+
+// "1024", "2kb", "1m", "1gb" -> bytes. throws on garbage.
+static long parse_size(const std::string& s) {
+    std::string v = trim(lower(s));
+    long mult = 1;
+    // strip an optional k/m/g suffix, tolerating a trailing b ("kb")
+    if (v.size() >= 2 && v.back() == 'b' &&
+        (v[v.size() - 2] == 'k' || v[v.size() - 2] == 'm' ||
+         v[v.size() - 2] == 'g'))
+        v.pop_back();
+    if (!v.empty()) {
+        char last = v.back();
+        if (last == 'k' || last == 'm' || last == 'g') {
+            mult = last == 'k' ? 1024L
+                   : last == 'm' ? 1024L * 1024
+                                 : 1024L * 1024 * 1024;
+            v.pop_back();
+        }
+    }
+    long n;
+    if (!parse_long(trim(v), n)) throw std::invalid_argument("bad size");
+    return n * mult;
 }
 
 // strip a # comment, honoring double quotes
@@ -75,6 +99,8 @@ struct Parser {
     // legacy top-level keys, used to seed server blocks
     std::string legacy_docroot = "./www";
     bool legacy_dir_listing = true;
+    bool legacy_gzip = false;
+    long legacy_gzip_min_size = 1024;
     std::string legacy_log;
 
     struct Frame {
@@ -105,6 +131,12 @@ struct Parser {
                 legacy_docroot = val;
             } else if (key == "dir_listing") {
                 legacy_dir_listing = parse_bool(val);
+            } else if (key == "gzip") {
+                legacy_gzip = parse_bool(val);
+            } else if (key == "gzip_min_size") {
+                long n = parse_size(val);
+                if (n < 0) error(where, "bad value for 'gzip_min_size'");
+                else legacy_gzip_min_size = n;
             } else {
                 error(where, "unknown top-level key '" + key + "'");
             }
@@ -119,6 +151,12 @@ struct Parser {
             if (key == "host") s.hosts = split_ws(val);
             else if (key == "docroot") s.docroot = val;
             else if (key == "dir_listing") s.dir_listing = parse_bool(val);
+            else if (key == "gzip") s.gzip = parse_bool(val);
+            else if (key == "gzip_min_size") {
+                long n = parse_size(val);
+                if (n < 0) error(where, "bad value for 'gzip_min_size'");
+                else s.gzip_min_size = n;
+            }
             else if (key == "log") s.log_path = val;
             else if (key == "rate") s.rate = std::stod(val);
             else if (key == "burst") s.burst = std::stol(val);
@@ -243,6 +281,8 @@ struct Parser {
                 fr.kind = 1;
                 fr.server.docroot = legacy_docroot;
                 fr.server.dir_listing = legacy_dir_listing;
+                fr.server.gzip = legacy_gzip;
+                fr.server.gzip_min_size = legacy_gzip_min_size;
                 fr.server.log_path = legacy_log;
                 stack.push_back(fr);
                 continue;
@@ -321,6 +361,8 @@ Config load_config(const std::string& path) {
         ServerBlock s;
         s.docroot = p.legacy_docroot;
         s.dir_listing = p.legacy_dir_listing;
+        s.gzip = p.legacy_gzip;
+        s.gzip_min_size = p.legacy_gzip_min_size;
         s.log_path = p.legacy_log;
         p.cfg.servers.push_back(s);
     }
