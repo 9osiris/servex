@@ -154,8 +154,11 @@ static void handle_connection(int fd, ServerContext* ctx,
                         res = h(req, *ctx);
                     } else {
                         route_label = "static";
+                        GzipOpts gz;
+                        gz.enabled = host.cfg.gzip;
+                        gz.min_size = host.cfg.gzip_min_size;
                         res = serve_file_request(host.cfg.docroot, req,
-                                                 host.cfg.dir_listing);
+                                                 host.cfg.dir_listing, gz);
                     }
                     if (loc)
                         for (auto& ah : loc->add_headers)
